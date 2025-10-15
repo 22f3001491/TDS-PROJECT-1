@@ -1,14 +1,14 @@
+# main.py
 from fastapi import FastAPI, Request, BackgroundTasks
-from fastapi.responses import HTMLResponse
 import os, json, base64
 from dotenv import load_dotenv
 from app.llm_generator import generate_app_code, decode_attachments
 from app.github_utils import (
     create_repo,
     create_or_update_file,
+    create_or_update_binary_file,
     enable_pages,
-    generate_mit_license,
-    create_or_update_binary_file
+    generate_mit_license
 )
 from app.notify import notify_evaluation_server  # optional
 
@@ -21,7 +21,6 @@ app = FastAPI()
 
 # === In-memory store for processed requests ===
 processed_requests = {}
-
 
 # === Background task to process requests ===
 def process_request(data):
@@ -36,11 +35,13 @@ def process_request(data):
     prev_readme = None
     if round_num == 2:
         try:
+            repo = create_repo(task_id)
             readme = repo.get_contents("README.md")
             prev_readme = readme.decoded_content.decode("utf-8", errors="ignore")
         except Exception:
             prev_readme = None
 
+    # Generate code using your LLM generator
     gen = generate_app_code(
         data["brief"],
         attachments=attachments,
@@ -52,6 +53,7 @@ def process_request(data):
     files = gen.get("files", {})
     saved_info = gen.get("attachments", [])
 
+    # Create or get repo safely
     repo = create_repo(task_id, description=f"Auto-generated app for task: {data['brief']}")
 
     # Round-specific logic
@@ -76,19 +78,19 @@ def process_request(data):
         for fname, content in files.items():
             create_or_update_file(repo, fname, content, f"Update {fname} for round 2")
 
+    # Add/update files from generated code
     for fname, content in files.items():
         create_or_update_file(repo, fname, content, f"Add/Update {fname}")
 
+    # Add MIT license
     mit_text = generate_mit_license()
     create_or_update_file(repo, "LICENSE", mit_text, "Add MIT license")
 
-    if round_num == 1:
-        pages_ok = enable_pages(task_id)
-        pages_url = f"https://{USERNAME}.github.io/{task_id}/" if pages_ok else None
-    else:
-        pages_ok = True
-        pages_url = f"https://{USERNAME}.github.io/{task_id}/"
+    # Enable GitHub Pages
+    pages_ok = enable_pages(task_id)
+    pages_url = f"https://{USERNAME}.github.io/{task_id}/" if pages_ok else None
 
+    # Commit SHA
     try:
         commit_sha = repo.get_commits()[0].sha
     except Exception:
@@ -105,24 +107,12 @@ def process_request(data):
     }
 
     print("🔔 Evaluation payload:", payload)
+
+    # Store in in-memory processed_requests
     key = f"{data['email']}::{data['task']}::round{round_num}::nonce{data['nonce']}"
     processed_requests[key] = payload
+
     print(f"✅ Finished round {round_num} for {task_id}")
-
-
-# === Root route for Hugging Face UI ===
-@app.get("/", response_class=HTMLResponse)
-async def home():
-    return """
-    <html>
-        <head><title>FastAPI App Running</title></head>
-        <body style="font-family: sans-serif; text-align: center; margin-top: 80px;">
-            <h1>🚀 FastAPI backend is live on Hugging Face!</h1>
-            <p>Use <code>/api-endpoint</code> to send POST requests.</p>
-            <p>Check logs below in the Space console to see real-time backend output.</p>
-        </body>
-    </html>
-    """
 
 
 # === Main API endpoint ===
@@ -136,6 +126,7 @@ async def receive_request(request: Request, background_tasks: BackgroundTasks):
         return {"error": "Invalid secret"}
 
     key = f"{data['email']}::{data['task']}::round{data['round']}::nonce{data['nonce']}"
+
     if key in processed_requests:
         print(f"⚠ Duplicate request detected for {key}. Logging only.")
         prev = processed_requests[key]
@@ -143,6 +134,7 @@ async def receive_request(request: Request, background_tasks: BackgroundTasks):
         return {"status": "ok", "note": "duplicate handled & logged"}
 
     background_tasks.add_task(process_request, data)
+
     return {"status": "accepted", "note": f"processing round {data['round']} started"}
 
 
