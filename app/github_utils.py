@@ -15,6 +15,7 @@ g = Github(GITHUB_TOKEN)
 def create_repo(repo_name: str, description: str = ""):
     """
     Create a public repository with the given name.
+    Truncate description to 350 characters to satisfy GitHub API.
     """
     user = g.get_user()
     # if repo exists, return it
@@ -25,14 +26,18 @@ def create_repo(repo_name: str, description: str = ""):
     except GithubException:
         pass
 
+    # Truncate description
+    safe_description = (description[:347] + "...") if len(description) > 350 else description
+
     repo = user.create_repo(
         name=repo_name,
-        description=description,
+        description=safe_description,
         private=False,
         auto_init=False
     )
     print("Created repo:", repo.full_name)
     return repo
+
 
 def create_or_update_file(repo, path: str, content: str, message: str):
     """
