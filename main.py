@@ -137,17 +137,23 @@ async def receive_request(request: Request, background_tasks: BackgroundTasks):
 
     return {"status": "accepted", "note": f"processing round {data['round']} started"}
 
-# === Optional notify endpoint ===
-@app.post("/notify")
-async def notify_endpoint(request: Request):
-    data = await request.json()
-    print("📢 Evaluation server received notification:", data)
 
-    # Try to find latest pages_url for the given task
+# === Notify endpoint (POST for API scripts, GET for browser) ===
+@app.post("/notify")
+async def notify_post(request: Request):
+    data = await request.json()
     task = data.get("task")
     matches = [v for k, v in processed_requests.items() if task and task in k]
     page_url = matches[-1]["pages_url"] if matches else None
+    print("📢 Evaluation server received notification (POST):", data)
+    return {"status": "received", "page_url": page_url}
 
+
+@app.get("/notify")
+async def notify_get(task: str):
+    matches = [v for k, v in processed_requests.items() if task and task in k]
+    page_url = matches[-1]["pages_url"] if matches else None
+    print(f"📢 Evaluation server received notification (GET) for task={task}")
     return {"status": "received", "page_url": page_url}
 
 
