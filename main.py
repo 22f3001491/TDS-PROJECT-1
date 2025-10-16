@@ -88,7 +88,7 @@ def process_request(data):
 
     # Enable GitHub Pages
     pages_ok = enable_pages(task_id)
-    pages_url = f"https://{USERNAME}.github.io/{task_id}/" if pages_ok else None
+    public pages_url = f"https://{USERNAME}.github.io/{task_id}/" if pages_ok else None
 
     # Commit SHA
     try:
@@ -137,10 +137,22 @@ async def receive_request(request: Request, background_tasks: BackgroundTasks):
 
     return {"status": "accepted", "note": f"processing round {data['round']} started"}
 
-
 # === Optional notify endpoint ===
 @app.post("/notify")
 async def notify_endpoint(request: Request):
     data = await request.json()
     print("📢 Evaluation server received notification:", data)
-    return {"status": "received"}
+
+    # Try to find latest pages_url for the given task
+    task = data.get("task")
+    matches = [v for k, v in processed_requests.items() if task and task in k]
+    page_url = matches[-1]["pages_url"] if matches else None
+
+    return {"status": "received", "page_url": page_url}
+
+
+# === Root route (health check) ===
+@app.get("/")
+async def home():
+    print("📢 Evaluation server started or checked")
+    return {"status": "started", "message": "TDS Project API is running!"}
