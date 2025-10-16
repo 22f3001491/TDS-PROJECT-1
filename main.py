@@ -88,7 +88,7 @@ def process_request(data):
 
     # Enable GitHub Pages
     pages_ok = enable_pages(task_id)
-    public pages_url = f"https://{USERNAME}.github.io/{task_id}/" if pages_ok else None
+    pages_url = f"https://{USERNAME}.github.io/{task_id}/" if pages_ok else None
 
     # Commit SHA
     try:
